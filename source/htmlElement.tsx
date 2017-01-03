@@ -1,9 +1,10 @@
 ﻿import * as React from "react";
 import * as Flux from "flux";
 
-export interface IElementProperties {
+export interface IElementProperties { 
     className?: string;
     style?: React.CSSProperties;
+    key?:string;
 }
 
 export interface IElementState {
@@ -14,42 +15,69 @@ export abstract class HtmlElement<TP extends IElementProperties,TS extends IElem
 
 }
 
+export interface IUserInputElementDispatcherPayLoad {
+    id?: string;
+    value: any;
+}
+
 export interface IUserInputElementProperties extends IElementProperties {
-    data?: any;
+    data?: any; 
     propertyName?:string;
     dependsOn?: Array<string>;
+    flux?: Flux.Dispatcher<IUserInputElementDispatcherPayLoad>;
 
     onChange?: (newValue: any) => boolean;
     onChanged?: (value:any)=>void;
 }
 
-interface IUserInputElementState extends IElementState {
-    value:any;
+export interface IUserInputElementState extends IElementState {
+    value: any;
+    isValid:boolean;
 }
 
 export abstract class UserInputHtmlElement<TP extends IUserInputElementProperties, TS extends IUserInputElementState> extends HtmlElement<TP, TS> {
     protected constructor(props: IUserInputElementProperties) {
         super(props);
-        if (props.data && props.propertyName) {
-            this.state = { value: props.data[props.propertyName] } as TS;
-        } else {
-            this.state = { value: "" } as TS;
+        this.state = { value: "", isValid: true } as TS;
+        this.validateState(props);
+
+        if (this.props.flux && typeof this.props.flux.register == "function") {
+            this.props.flux.register((payload) => this.onFluxDispatch(payload));
         }
+    }
+     
+    public componentWillReceiveProps(nextProps: TP): void {
+        this.validateState(nextProps);
     }
 
     protected onChange(newValue: any) {
         if (newValue !== this.state.value) {
-            let isValid = this.validatePrivate(newValue);
+            const isValid = this.validate(this.props, newValue);
 
             if (typeof this.props.onChange == "function") {
-                isValid = this.props.onChange(newValue);
+                if (!this.props.onChange(newValue)) {
+                    return;
+                }
             }
 
-            if (isValid) {
-                this.setValue(newValue);
-                this.fireOnChanged(newValue);
-                this.setState({ value: newValue } as TS);
-            }
+            this.setValue(newValue);
+            this.fireOnChanged(newValue);
+            this.setState({ value: newValue, isValid } as TS);
+        }
+    }
+
+    private onFluxDispatch(payload: IUserInputElementDispatcherPayLoad) {
+        if (!payload.id || payload.id === this.props.propertyName ||
+            (Array.isArray(this.props.dependsOn) && this.props.dependsOn.filter(x => x === payload.id))) {
+                this.validateState(this.props);
+        }
+    }
+
+
+    protected validateState(props:IUserInputElementProperties) {
+        const value = this.getValue(props);
+        if (value !== this.state.value) {
+            this.setState({ value: value, isValid: this.validate(props, value) } as TS);
         }
     }
 
@@ -57,17 +85,26 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
         if (typeof this.props.onChanged == "function") {
             this.props.onChanged(value);
         }
+
+        if (this.props.flux && typeof this.props.flux.dispatch == "function") {
+            this.props.flux.dispatch({ id: this.props.propertyName, value: value });
+        }
     }
 
-    private validatePrivate(value: any): boolean {
-        if (typeof this.validate == "function") {
-            return this.validate(value);
-        }
-
+    protected validate(props:IUserInputElementProperties, value: any):boolean {
         return true;
     }
 
-    protected abstract validate(value: any):boolean;
+    private getValue(props?: IUserInputElementProperties): any {
+        if (!props) {
+            props = this.props;
+        }
+        if (props.data && props.propertyName) {
+            return props.data[props.propertyName];
+        }
+
+        return this.state ? this.state.value : null;
+    }
 
     protected setValue(value:any) {
         if (this.props.data && this.props.propertyName) {
