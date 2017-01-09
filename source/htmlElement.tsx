@@ -15,16 +15,17 @@ export abstract class HtmlElement<TP extends IElementProperties,TS extends IElem
 
 }
 
-export interface IUserInputElementDispatcherPayLoad {
+export interface IFluxPayload {
     id?: string;
     value: any;
+    sender: any;
 }
 
 export interface IUserInputElementProperties extends IElementProperties {
     data?: any; 
     propertyName?:string;
     dependsOn?: Array<string>;
-    flux?: Flux.Dispatcher<IUserInputElementDispatcherPayLoad>;
+    flux?: Flux.Dispatcher<IFluxPayload>;
 
     onChange?: (newValue: any) => boolean;
     onChanged?: (value:any)=>void;
@@ -33,6 +34,17 @@ export interface IUserInputElementProperties extends IElementProperties {
 export interface IUserInputElementState extends IElementState {
     value: any;
     isValid:boolean;
+}
+
+export interface IValidationParams {
+    isRequired?: boolean;
+    isForced?: boolean;
+    minValue?: string | number;
+    maxValue?: string | number;
+    errorClassName?: string;
+    minLength?: number;
+    maxLength?: number;
+    custom?: (value: any, dataSource?: any) => { isValid: boolean, canUpdate?: boolean };
 }
 
 export abstract class UserInputHtmlElement<TP extends IUserInputElementProperties, TS extends IUserInputElementState> extends HtmlElement<TP, TS> {
@@ -66,13 +78,12 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
         }
     }
 
-    private onFluxDispatch(payload: IUserInputElementDispatcherPayLoad) {
+    private onFluxDispatch(payload: IFluxPayload) {
         if (!payload.id || payload.id === this.props.propertyName ||
             (Array.isArray(this.props.dependsOn) && this.props.dependsOn.filter(x => x === payload.id))) {
                 this.validateState(this.props);
         }
     }
-
 
     protected validateState(props:IUserInputElementProperties) {
         const value = this.getValue(props);
@@ -87,7 +98,7 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
         }
 
         if (this.props.flux && typeof this.props.flux.dispatch == "function") {
-            this.props.flux.dispatch({ id: this.props.propertyName, value: value });
+            this.props.flux.dispatch({sender:this, id: this.props.propertyName, value: value });
         }
     }
 
