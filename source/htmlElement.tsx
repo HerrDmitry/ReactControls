@@ -110,6 +110,7 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
         if (!props) {
             props = this.props;
         }
+
         if (props.data && props.propertyName) {
             return props.data[props.propertyName];
         }
