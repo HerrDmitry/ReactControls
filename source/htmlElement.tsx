@@ -48,7 +48,7 @@ export interface IValidationParams {
 }
 
 export abstract class UserInputHtmlElement<TP extends IUserInputElementProperties, TS extends IUserInputElementState> extends HtmlElement<TP, TS> {
-    protected constructor(props: IUserInputElementProperties) {
+    constructor(props: IUserInputElementProperties) {
         super(props);
         this.state = { value: "", isValid: true } as TS;
         this.validateState(props);
