@@ -1,4 +1,4 @@
-﻿import * as React from "react";
+﻿import * as React from "react"; 
 import * as Flux from "flux";
 
 export interface IElementProperties { 
@@ -26,9 +26,12 @@ export interface IUserInputElementProperties extends IElementProperties {
     propertyName?:string;
     dependsOn?: Array<string>;
     flux?: Flux.Dispatcher<IFluxPayload>;
+    placeholder?: string;
 
     onChange?: (newValue: any) => boolean;
-    onChanged?: (value:any)=>void;
+    onChanged?: (value: any) => void;
+
+    validation?:IValidationParams;
 }
 
 export interface IUserInputElementState extends IElementState {
@@ -36,6 +39,10 @@ export interface IUserInputElementState extends IElementState {
     isValid:boolean;
 }
 
+export interface IValidationResult {
+    readonly isValid: boolean;
+    readonly canUpdate?: boolean;
+}
 export interface IValidationParams {
     isRequired?: boolean;
     isForced?: boolean;
@@ -44,11 +51,11 @@ export interface IValidationParams {
     errorClassName?: string;
     minLength?: number;
     maxLength?: number;
-    custom?: (value: any, dataSource?: any) => { isValid: boolean, canUpdate?: boolean };
+    custom?: (newValue: any, dataSource?: any, propertyName?:string) => IValidationResult;
 }
 
 export abstract class UserInputHtmlElement<TP extends IUserInputElementProperties, TS extends IUserInputElementState> extends HtmlElement<TP, TS> {
-    constructor(props: IUserInputElementProperties) {
+    constructor(props: TP) {
         super(props);
         this.state = { value: "", isValid: true } as TS;
         this.validateState(props);
@@ -64,7 +71,6 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
 
     protected onChange(newValue: any) {
         if (newValue !== this.state.value) {
-            const isValid = this.validate(this.props, newValue);
 
             if (typeof this.props.onChange == "function") {
                 if (!this.props.onChange(newValue)) {
@@ -72,23 +78,39 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
                 }
             }
 
-            this.setValue(newValue);
-            this.fireOnChanged(newValue);
-            this.setState({ value: newValue, isValid } as TS);
+            this.validateAndUpdate(this.props, newValue);
         }
     }
 
     private onFluxDispatch(payload: IFluxPayload) {
-        if (!payload.id || payload.id === this.props.propertyName ||
-            (Array.isArray(this.props.dependsOn) && this.props.dependsOn.filter(x => x === payload.id))) {
-                this.validateState(this.props);
+        if (payload.sender != this &&
+        (!payload.id || payload.id === this.props.propertyName ||
+            (Array.isArray(this.props.dependsOn) && this.props.dependsOn.filter(x => x === payload.id)))) {
+            this.validateState(this.props);
         }
     }
 
-    protected validateState(props:IUserInputElementProperties) {
-        const value = this.getValue(props);
-        if (value !== this.state.value) {
-            this.setState({ value: value, isValid: this.validate(props, value) } as TS);
+    private validateAndUpdate(props: TP, newValue: any) {
+        const validationResult = this.validate(props, newValue);
+        let isValid = validationResult.isValid;
+        if (!validationResult.canUpdate && newValue !== this.state.value) {
+            newValue = this.getValue(props);
+            const oldValidation = this.validate(props, newValue);
+            isValid = oldValidation.isValid;
+        } else {
+            this.setValue(newValue);
+            this.fireOnChanged(newValue);
+        }
+
+        if (this.state.value !== newValue || this.state.isValid !== isValid) {
+            this.setState({ value: newValue, isValid: isValid } as TS);
+        }
+    }
+
+    protected validateState(props: TP) {
+        if (props.data && props.propertyName) {
+            const value = this.getValue(props);
+            this.validateAndUpdate(props, value);
         }
     }
 
@@ -102,11 +124,43 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
         }
     }
 
-    protected validate(props:IUserInputElementProperties, value: any):boolean {
-        return true;
+    protected validate(props: TP, value: any): IValidationResult {
+        if (props.validation && typeof props.validation.custom == "function") {
+            return props.validation.custom(value, this.props.data, this.props.propertyName);
+        }
+
+        let isValid = true;
+        let canUpdate = true;
+
+        if (props && props.validation) {
+            if (props.validation.isRequired) {
+                isValid = value !== "" && value != undefined && value != null;
+            }
+
+            const maxLength = this.getNumber(props.validation.maxLength);
+            if (isValid && maxLength > 0 && value.toString().length > maxLength) {
+                isValid = false;
+                canUpdate = false;
+            }
+
+            const minLength = this.getNumber(props.validation.minLength);
+            if (isValid && minLength > 0 && value.toString().length < minLength) {
+                isValid = false;
+            }
+        }
+
+        return { canUpdate: canUpdate, isValid: isValid } as IValidationResult;
     }
 
-    private getValue(props?: IUserInputElementProperties): any {
+    private getNumber(value?: number) {
+        if (value != undefined && value != null && value > 0) {
+            return value;
+        }
+
+        return 0;
+    }
+
+    private getValue(props?: TP): any {
         if (!props) {
             props = this.props;
         }
@@ -121,6 +175,9 @@ export abstract class UserInputHtmlElement<TP extends IUserInputElementPropertie
     protected setValue(value:any) {
         if (this.props.data && this.props.propertyName) {
             this.props.data[this.props.propertyName] = value;
+            return true;
         }
+
+        return false;
     }
 }

@@ -1,0 +1,10 @@
+.git
+.idea
+generated
+node_modules/
+package.json
+source/htmlElement.js
+source/htmlElement.js.map
+source/textbox.js
+source/textbox.js.map
+tsconfig.json
